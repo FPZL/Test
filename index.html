@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Empréstimo de Livros</title>
+  <style>
+    :root{--bg:#f6f8fc;--card:#fff;--accent:#0b84ff;--muted:#6b7280;--radius:12px}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Arial;background:var(--bg);color:#0b1320;padding:26px}
+    .container{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:1fr 360px;gap:20px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:4px 0 0;color:var(--muted);font-size:13px}
+
+    /* left: list */
+    .list{display:grid;gap:14px}
+    .card{background:var(--card);padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(10,12,20,0.06);display:flex;gap:12px}
+    .cover{width:120px;height:160px;border-radius:8px;overflow:hidden;background:#eef2ff;display:flex;align-items:center;justify-content:center}
+    .cover img{width:100%;height:100%;object-fit:cover}
+    .info{flex:1;display:flex;flex-direction:column}
+    .title{font-weight:700}
+    .desc{font-size:13px;color:var(--muted);margin-top:6px}
+    .meta{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .badge{padding:6px 8px;border-radius:8px;font-size:13px}
+    .available{background:#e6fbf0;color:#0a8a4b}
+    .unavailable{background:#fff2f2;color:#b42323}
+
+    .actions{margin-left:auto;display:flex;gap:8px}
+    button{border:0;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .btn-primary{background:var(--accent);color:white}
+    .btn-outline{background:transparent;border:1px solid #e6e9ef}
+
+    /* right: form */
+    .panel{background:var(--card);padding:14px;border-radius:12px;height:fit-content;box-shadow:0 6px 18px rgba(10,12,20,0.06)}
+    label{display:block;font-size:13px;margin-top:8px;color:#101827}
+    input[type=text], textarea, .file-drop{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px}
+    textarea{min-height:90px}
+    .file-drop{display:flex;align-items:center;justify-content:center;min-height:110px;border-radius:8px;border:1px dashed #e6e9ef;color:var(--muted);cursor:pointer}
+
+    .requests{margin-top:12px}
+    .request-item{padding:8px;border-radius:8px;background:#fbfbff;border:1px solid #eef2ff;margin-bottom:8px}
+
+    footer{grid-column:1/-1;margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
+
+    @media (max-width:980px){.container{grid-template-columns:1fr}.cover{width:100px;height:140px}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header style="grid-column:1/-1">
+      <div>
+        <h1>Empréstimo de Livros</h1>
+        <p class="lead">Adicione livros que você quer emprestar. Outros usuários podem solicitar empréstimo.</p>
+      </div>
+      <div style="text-align:right;color:var(--muted)">Dados salvos localmente no navegador</div>
+    </header>
+
+    <main>
+      <div class="list" id="bookList">
+        <!-- cards injetados aqui -->
+      </div>
+    </main>
+
+    <aside>
+      <div class="panel">
+        <h3 style="margin:0 0 6px 0">Adicionar um livro</h3>
+        <label for="title">Título</label>
+        <input id="title" type="text" placeholder="Ex: Dom Casmurro" required>
+        <label for="author">Autor</label>
+        <input id="author" type="text" placeholder="Ex: Machado de Assis">
+        <label for="desc">Descrição</label>
+        <textarea id="desc" placeholder="Condição, edição, observações..."></textarea>
+
+        <label style="margin-top:10px">Capa do livro</label>
+        <div class="file-drop" id="fileDrop">Clique ou arraste a imagem aqui <input id="fileInput" type="file" accept="image/*" style="display:none"></div>
+
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button id="addBtn" class="btn-primary">Publicar</button>
+          <button id="clearBtn" class="btn-outline">Limpar</button>
+        </div>
+
+        <div style="margin-top:12px;border-top:1px solid #f1f5f9;padding-top:10px">
+          <h4 style="margin:0 0 6px 0">Solicitações</h4>
+          <div id="requests" class="requests">Nenhuma solicitação ainda.</div>
+        </div>
+
+        <div style="margin-top:10px;font-size:13px;color:var(--muted)">Dica: este protótipo salva os dados no seu navegador. Para multiusuários, é necessária uma API/back-end.</div>
+      </div>
+    </aside>
+
+    <footer>Feito com ❤️ — Protótipo local (sem servidor)</footer>
+  </div>
+
+  <script>
+    const KEY='emprestimo_livros_v1';
+    const REQ_KEY='emprestimo_solicitacoes_v1';
+    let books = [];
+    let requests = [];
+
+    const bookList = document.getElementById('bookList');
+    const titleEl = document.getElementById('title');
+    const authorEl = document.getElementById('author');
+    const descEl = document.getElementById('desc');
+    const fileInput = document.getElementById('fileInput');
+    const fileDrop = document.getElementById('fileDrop');
+    const addBtn = document.getElementById('addBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const requestsEl = document.getElementById('requests');
+
+    let currentImage=null;
+
+    function load(){
+      try{ books = JSON.parse(localStorage.getItem(KEY)) || []; requests = JSON.parse(localStorage.getItem(REQ_KEY)) || []; }catch(e){ books=[]; requests=[] }
+      renderBooks(); renderRequests();
+    }
+
+    function save(){ localStorage.setItem(KEY, JSON.stringify(books)); localStorage.setItem(REQ_KEY, JSON.stringify(requests)); }
+
+    function renderBooks(){
+      bookList.innerHTML='';
+      if(books.length===0){ bookList.innerHTML='<div style="padding:20px;background:#fff;border-radius:10px;text-align:center;color:#6b7280">Nenhum livro publicado ainda.</div>'; return }
+      books.forEach(b=>{
+        const card = document.createElement('div'); card.className='card';
+        const cover = document.createElement('div'); cover.className='cover';
+        const img = document.createElement('img'); img.src = b.image || '';
+        img.alt = b.title; cover.appendChild(img);
+        const info = document.createElement('div'); info.className='info';
+        const title = document.createElement('div'); title.className='title'; title.textContent = b.title + (b.author ? ' — '+b.author : '');
+        const desc = document.createElement('div'); desc.className='desc'; desc.textContent = b.desc || '';
+        const meta = document.createElement('div'); meta.className='meta';
+        const badge = document.createElement('div'); badge.className='badge ' + (b.available? 'available':'unavailable'); badge.textContent = b.available ? 'Disponível' : 'Indisponível';
+        const actions = document.createElement('div'); actions.className='actions';
+        const reqBtn = document.createElement('button'); reqBtn.className='btn-primary'; reqBtn.textContent='Solicitar Empréstimo';
+        const removeBtn = document.createElement('button'); removeBtn.className='btn-outline'; removeBtn.textContent='Remover';
+        reqBtn.onclick = ()=> requestLoan(b.id);
+        removeBtn.onclick = ()=> removeBook(b.id);
+        actions.appendChild(reqBtn); actions.appendChild(removeBtn);
+
+        meta.appendChild(badge); meta.appendChild(actions);
+        info.appendChild(title); info.appendChild(desc); info.appendChild(meta);
+        card.appendChild(cover); card.appendChild(info);
+        bookList.appendChild(card);
+      });
+    }
+
+    function renderRequests(){
+      if(requests.length===0){ requestsEl.innerHTML='Nenhuma solicitação ainda.'; return }
+      requestsEl.innerHTML='';
+      requests.forEach(r=>{
+        const d = document.createElement('div'); d.className='request-item';
+        d.innerHTML = '<strong>'+r.bookTitle+'</strong><div style="font-size:13px;color:#374151">Solicitante: '+(r.name||'Anônimo')+'</div><div style="margin-top:6px;font-size:13px;color:#4b5563">Mensagem: '+(r.message||'')+'</div>';
+        const btns = document.createElement('div'); btns.style.marginTop='8px';
+        const accept = document.createElement('button'); accept.className='btn-primary'; accept.textContent='Aceitar';
+        const decline = document.createElement('button'); decline.className='btn-outline'; decline.style.marginLeft='8px'; decline.textContent='Recusar';
+        accept.onclick = ()=> respondRequest(r.id,true);
+        decline.onclick = ()=> respondRequest(r.id,false);
+        btns.appendChild(accept); btns.appendChild(decline);
+        d.appendChild(btns);
+        requestsEl.appendChild(d);
+      });
+    }
+
+    function addBook(){
+      const title = titleEl.value.trim(); if(!title){ alert('Informe o título'); return }
+      const author = authorEl.value.trim(); const desc = descEl.value.trim();
+      const id = Date.now().toString(36);
+      books.unshift({id,title,author,desc,image:currentImage,available:true}); save(); renderBooks(); resetForm();
+    }
+
+    function removeBook(id){ if(!confirm('Remover este livro?')) return; books = books.filter(b=>b.id!==id); save(); renderBooks(); }
+
+    function requestLoan(bookId){
+      const book = books.find(b=>b.id===bookId); if(!book) return; if(!book.available){ alert('Livro indisponível no momento'); return }
+      const name = prompt('Seu nome (opcional)'); const message = prompt('Mensagem para o dono (opcional)');
+      const req = {id: Date.now().toString(36),bookId,bookTitle:book.title,name,message};
+      requests.push(req); save(); renderRequests(); alert('Solicitação enviada. O dono poderá aceitar ou recusar.');
+    }
+
+    function respondRequest(reqId,accepted){
+      const req = requests.find(r=>r.id===reqId); if(!req) return;
+      if(accepted){ // marcar livro como indisponível
+        const b = books.find(x=>x.id===req.bookId); if(b){ b.available=false }
+        alert('Você aceitou a solicitação. Combine a entrega com o solicitante.');
+      } else { alert('Solicitação recusada.'); }
+      // remover request
+      requests = requests.filter(r=>r.id!==reqId); save(); renderBooks(); renderRequests();
+    }
+
+    function resetForm(){ titleEl.value=''; authorEl.value=''; descEl.value=''; currentImage=null; fileDrop.textContent='Clique ou arraste a imagem aqui'; }
+
+    // file handling
+    fileDrop.addEventListener('click', ()=> fileInput.click());
+    fileDrop.addEventListener('dragover', e=>{ e.preventDefault(); fileDrop.style.borderColor='#c7e0ff' });
+    fileDrop.addEventListener('dragleave', e=>{ fileDrop.style.borderColor='' });
+    fileDrop.addEventListener('drop', e=>{ e.preventDefault(); fileDrop.style.borderColor=''; const f = e.dataTransfer.files && e.dataTransfer.files[0]; if(f) readFile(f); });
+    fileInput.addEventListener('change', e=>{ const f = e.target.files && e.target.files[0]; if(f) readFile(f); });
+
+    function readFile(file){ if(!file.type.startsWith('image/')){ alert('Envie uma imagem'); return }
+      const reader = new FileReader(); reader.onload = ()=>{ currentImage = reader.result; fileDrop.innerHTML = '<img style="max-width:100%;max-height:140px;object-fit:cover;border-radius:8px" src="'+currentImage+'">' };
+      reader.readAsDataURL(file);
+    }
+
+    addBtn.addEventListener('click', addBook); clearBtn.addEventListener('click', resetForm);
+
+    load();
+  </script>
+</body>
+</html>
